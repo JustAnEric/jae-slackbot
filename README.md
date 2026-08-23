@@ -39,7 +39,7 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 ### ✈️ AI Agent
 
 - [ ] tool calling
-- [ ] use Slack's agent functionality for better responses (expanding further from DMs)
+- [X] use Slack's agent functionality for better responses (expanding further from DMs)
 - [ ] response streaming to Slack
 - [ ] beautiful Slack agent responses
     - [ ] thinking block
@@ -84,6 +84,17 @@ im:read   -- View basic information about direct messages that "jae" has been ad
 im:write   -- Start direct messages with people
 users.profile:read   -- View profile details about people in a workspace
 users:read   -- View people in a workspace
+```
+Add event subscriptions so the bot receives events via Socket Mode (Features -> Event Subscriptions):
+```lua
+agent_session_stopped   -- 
+agent_session_title_changed   --
+assistant_thread_context_changed   -- The context changed while an App Agent thread was visible
+assistant_thread_started   -- An App Agent thread was started
+message.channels   -- A message was posted to a channel
+message.groups   -- A message was posted to a private channel
+message.im   -- A message was posted in a direct message channel
+app_home_opened   -- User clicked into your App Home
 ```
 And make sure to turn on agent experience in the Features -> Agents section of your Slack API dashboard.
 

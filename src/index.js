@@ -99,9 +99,12 @@ app.message(async ({ say, message, setStatus }) => {
     }
 
     if (message.subtype) return;
+
+    const threadKey = `${message.channel}:${message.thread_ts || message.ts}`;
+
     if (message.channel_type == "im" && message.channel.startsWith('D') && message.text) {
-        if (!CONVERSATIONS.get(message.user)) {
-            CONVERSATIONS.set(message.user, []);
+        if (!CONVERSATIONS.get(threadKey)) {
+            CONVERSATIONS.set(threadKey, []);
         }
 
         await setStatus({
@@ -130,25 +133,25 @@ app.message(async ({ say, message, setStatus }) => {
 
         let userData = USER_CACHE.get(message.user) || null;
 
-        const modelResponse = await runAI(message.text, CONVERSATIONS.get(message.user) || [], { 
+        const modelResponse = await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
             uid: message.user, 
             cid: message.channel, 
             ct: message.channel_type, 
             cn: message.channel_type === 'im' ? 'dm' : (CHANNEL_CACHE.get(message.channel)?.name || 'unknown'), 
             un: userData.real_name || userData.name, 
-            s: { e: emoji.emojify(userData.profile.status_emoji), t: userData.profile.status_text },
+            s: { e: emoji.emojify(userData.profile.status_emoji || ''), t: userData.profile.status_text },
             // *just for debug ^^
             userID: message.user,
             channelID: message.channel,
             channelType: 'Direct Message Channel',
             channelName: 'dm',
             userName: userData.real_name || userData.name,
-            userStatusEmoji: emoji.emojify(userData.profile.status_emoji),
+            userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
             userStatusText: userData.profile.status_text
         });
         
-        CONVERSATIONS.set(message.user, [
-            ...(CONVERSATIONS.get(message.user) || []),
+        CONVERSATIONS.set(threadKey, [
+            ...(CONVERSATIONS.get(threadKey) || []),
             { role: 'user', content: message.text },
             { role: 'assistant', content: modelResponse }
         ]);
@@ -156,10 +159,10 @@ app.message(async ({ say, message, setStatus }) => {
         await say({ text: modelResponse, mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts });
 
         return await respdone();
-    } else if (message.channel_type === 'channel' || message.channel_type === 'group') {
+    } else if ((message.channel_type === 'channel' || message.channel_type === 'group') && (message.channel.startsWith('C') || message.channel.startsWith('G'))) {
         if (message.text && (message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`) || message.channel === process.env.SLACK_BOT_TEST_CHANNEL)) {
-            if (!CONVERSATIONS.get(message.channel)) {
-                CONVERSATIONS.set(message.channel, []);
+            if (!CONVERSATIONS.get(threadKey)) {
+                CONVERSATIONS.set(threadKey, []);
             }
 
             await setStatus({
@@ -188,25 +191,25 @@ app.message(async ({ say, message, setStatus }) => {
 
             let userData = USER_CACHE.get(message.user) || null;
 
-            const modelResponse = await runAI(message.text, CONVERSATIONS.get(message.channel) || [], { 
+            const modelResponse = await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
                 uid: message.user, 
                 cid: message.channel, 
                 ct: message.channel_type, 
                 cn: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
                 un: userData.real_name || userData.name, 
-                s: { e: emoji.emojify(userData.profile.status_emoji), t: userData.profile.status_text },
+                s: { e: emoji.emojify(userData.profile.status_emoji || ''), t: userData.profile.status_text },
                 // *just for debug ^^
                 userID: message.user,
                 channelID: message.channel,
                 channelType: message.channel_type === 'channel' ? 'Public Channel' : 'Private Channel',
                 channelName: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
                 userName: userData.real_name || userData.name,
-                userStatusEmoji: emoji.emojify(userData.profile.status_emoji),
+                userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
                 userStatusText: userData.profile.status_text
             });
 
-            CONVERSATIONS.set(message.channel, [
-                ...(CONVERSATIONS.get(message.channel) || []),
+            CONVERSATIONS.set(threadKey, [
+                ...(CONVERSATIONS.get(threadKey) || []),
                 { role: 'user', content: message.text },
                 { role: 'assistant', content: modelResponse }
             ]);
@@ -223,7 +226,7 @@ app.message(async ({ say, message, setStatus }) => {
 
 
     try {
-        const result = await app.client.conversations.list({ types: 'public_channel,private_channel' });
+        const result = await app.client.conversations.list({ types: 'public_channel,private_channel,im' });
         for (const channel of result.channels) {
             CHANNEL_CACHE.set(channel.id, channel);
         }
