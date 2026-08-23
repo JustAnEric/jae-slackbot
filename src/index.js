@@ -9,6 +9,7 @@ const remarkRemoveComments = require('remark-remove-comments');
 
 const { App } = require("@slack/bolt");
 const { Ollama } = require("ollama");
+const { ChatResponse } = require("ollama/browser");
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -56,10 +57,11 @@ async function runAI(prompt, conversation = [], additionalData = {}) {
             temperature: parseFloat(process.env.TEMPERATURE || 0.8)
         },
         model: process.env.MODEL || 'gemma4:e2b',
-        think: process.env.THINKING_MODE.trim().toLowerCase() == "false" ? false : true
+        think: process.env.THINKING_MODE.trim().toLowerCase() == "false" ? false : true,
+        stream: process.env.STREAM_MODE.trim().toLowerCase() == "false" ? false : true
     });
 
-    return request.message.content;
+    return request;
 }
 
 app.command("/jae-ping", async ({ command, ack, respond }) => {
@@ -96,7 +98,7 @@ ${response.data.punchline}`
     }
 });
 
-app.message(async ({ say, message, setStatus }) => {
+app.message(async ({ say, message, setStatus, sayStream, event }) => {
     async function respdone() {
         // Clear status when done
         try {
@@ -104,15 +106,7 @@ app.message(async ({ say, message, setStatus }) => {
         } catch (e) {}
     }
 
-    if (message.subtype) return;
-
-    const threadKey = `${message.channel}:${message.thread_ts || message.ts}`;
-
-    if (message.channel_type == "im" && message.channel.startsWith('D') && message.text) {
-        if (!CONVERSATIONS.get(threadKey)) {
-            CONVERSATIONS.set(threadKey, []);
-        }
-
+    async function setstatus() {
         await setStatus({
             channel_id: message.channel,
             thread_ts: message.thread_ts || message.ts,
@@ -126,6 +120,20 @@ app.message(async ({ say, message, setStatus }) => {
                 'Convincing the AI to stop overthinking…',
             ],
         });
+    }
+
+    const subtype = event.subtype || message.subtype;
+
+    if (subtype) return;
+
+    const threadKey = `${message.channel}:${message.thread_ts || message.ts}`;
+
+    if (message.channel_type == "im" && message.channel.startsWith('D') && message.text) {
+        if (!CONVERSATIONS.get(threadKey)) {
+            CONVERSATIONS.set(threadKey, []);
+        }
+
+        await setstatus();
 
         if (!USER_CACHE.has(message.user)) {
             let userData = (await app.client.users.info({ user: message.user })).user;
@@ -140,7 +148,7 @@ app.message(async ({ say, message, setStatus }) => {
         let userData = USER_CACHE.get(message.user) || null;
 
         // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
-        if (message.thread_ts && !CONVERSATIONS.get(threadKey)) {
+        if (message.thread_ts && (!CONVERSATIONS.get(threadKey) || (CONVERSATIONS.get(threadKey) || []).length == 0)) {
             try {
                 const result = await app.client.conversations.replies({
                     channel: message.channel,
@@ -149,7 +157,7 @@ app.message(async ({ say, message, setStatus }) => {
 
                 if (result && result.messages) {
                     const threadMessages = result.messages.map(msg => {
-                        return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: makeMessageContent({ user: msg.user, text: msg.text }) };
+                        return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
                     });
                     CONVERSATIONS.set(threadKey, threadMessages);
                 }
@@ -158,7 +166,7 @@ app.message(async ({ say, message, setStatus }) => {
             }
         }
 
-        const modelResponse = await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
+        let modelResponse = [await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
             uid: message.user, 
             cid: message.channel, 
             ct: message.channel_type, 
@@ -173,36 +181,47 @@ app.message(async ({ say, message, setStatus }) => {
             userName: userData.real_name || userData.name,
             userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
             userStatusText: userData.profile.status_text
-        });
-        
+        }), ""];
+
+        if (modelResponse[0].constructor.name == "ChatResponse") {
+            // not streaming
+            modelResponse[1] = modelResponse[0].message.content;
+
+            await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
+        } else {
+            // it's an asynciterator
+            const stream = sayStream({ thread_ts: message.thread_ts || message.ts });
+            try {
+                for await (const part of modelResponse[0]) {
+                    if (part.done) {
+                        await stream.stop();
+                        break;
+                    }
+                    if (part.message.content) {
+                        modelResponse[1] += part.message.content;
+                        await stream.append({ markdown_text: part.message.content });
+                    }
+                }
+            } catch (e) {
+                await stream.append({ markdown_text: '\n\n:x:' }); // marks an error
+                await stream.stop();
+            }
+        }
+
         CONVERSATIONS.set(threadKey, [
             ...(CONVERSATIONS.get(threadKey) || []),
             { role: 'user', content: makeMessageContent({ user: message.user, text: message.text }) },
-            { role: 'assistant', content: modelResponse }
+            { role: 'assistant', content: modelResponse[1] }
         ]);
-
-        await say({ text: modelResponse, mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts });
 
         return await respdone();
     } else if ((message.channel_type === 'channel' || message.channel_type === 'group') && (message.channel.startsWith('C') || message.channel.startsWith('G'))) {
-        if (message.text && (message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`) || message.channel === process.env.SLACK_BOT_TEST_CHANNEL)) {
+        if (message.text && ((message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`) || message.thread_ts) && message.channel === process.env.SLACK_BOT_TEST_CHANNEL)) {
             if (!CONVERSATIONS.get(threadKey)) {
                 CONVERSATIONS.set(threadKey, []);
             }
 
-            await setStatus({
-                channel_id: message.channel,
-                thread_ts: message.thread_ts || message.ts,
-                status: 'thinking...',
-                loading_messages: [
-                    'Loading jae…',
-                    'Teaching the hamsters to type faster…',
-                    'Untangling the internet cables…',
-                    'Consulting the office goldfish…',
-                    'Polishing up the response just for you…',
-                    'Convincing the AI to stop overthinking…',
-                ],
-            });
+            await setstatus();
 
             if (!USER_CACHE.has(message.user)) {
                 let userData = (await app.client.users.info({ user: message.user })).user;
@@ -216,7 +235,26 @@ app.message(async ({ say, message, setStatus }) => {
 
             let userData = USER_CACHE.get(message.user) || null;
 
-            const modelResponse = await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
+            // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
+            if (message.thread_ts && (!CONVERSATIONS.get(threadKey) || (CONVERSATIONS.get(threadKey) || []).length == 0)) {
+                try {
+                    const result = await app.client.conversations.replies({
+                        channel: message.channel,
+                        ts: message.thread_ts
+                    });
+
+                    if (result && result.messages) {
+                        const threadMessages = result.messages.map(msg => {
+                            return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
+                        });
+                        CONVERSATIONS.set(threadKey, threadMessages);
+                    }
+                } catch (e) {
+                    console.error("failed to fetch thread messages:", e);
+                }
+            }
+
+            let modelResponse = [await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
                 uid: message.user, 
                 cid: message.channel, 
                 ct: message.channel_type, 
@@ -231,15 +269,38 @@ app.message(async ({ say, message, setStatus }) => {
                 userName: userData.real_name || userData.name,
                 userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
                 userStatusText: userData.profile.status_text
-            });
+            }), ""];
+
+            if (modelResponse[0].constructor.name == "ChatResponse") {
+                // not streaming
+                modelResponse[1] = modelResponse[0].message.content;
+
+                await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
+            } else {
+                // it's an asynciterator
+                const stream = sayStream({ thread_ts: message.thread_ts || message.ts });
+                try {
+                    for await (const part of modelResponse[0]) {
+                        if (part.done) {
+                            await stream.stop();
+                            break;
+                        }
+                        if (part.message.content) {
+                            modelResponse[1] += part.message.content;
+                            await stream.append({ markdown_text: part.message.content });
+                        }
+                    }
+                } catch (e) {
+                    await stream.append({ markdown_text: '\n\n:x:' }); // marks an error
+                    await stream.stop();
+                }
+            }
 
             CONVERSATIONS.set(threadKey, [
                 ...(CONVERSATIONS.get(threadKey) || []),
                 { role: 'user', content: makeMessageContent({ user: message.user, text: message.text }) },
-                { role: 'assistant', content: modelResponse }
+                { role: 'assistant', content: modelResponse[1] }
             ]);
-
-            await say({ text: modelResponse, mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
 
             return await respdone();
         }

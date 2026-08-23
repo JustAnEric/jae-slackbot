@@ -51,6 +51,8 @@ Message formatting:
     ```
 - This format in each message is how you distinguish who said what message in a thread.
 - If the current channel is listed in Context section as a Direct Message Channel, your conversation does not have multiple users but only one instead.
+- CRITICAL: The <MESSAGE_INFO> and <CONTENT> tags are ONLY for incoming messages to help you parse context.
+- NEVER wrap your own responses in these XML tags. Output plain text directly for Slack.
 
 Context:
 - The latest user's Slack mention is <@{userID}> and the user's name is ```{userName}```.
