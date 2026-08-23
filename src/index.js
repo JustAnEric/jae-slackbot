@@ -153,14 +153,74 @@ app.message(async ({ say, message, setStatus }) => {
             { role: 'assistant', content: modelResponse }
         ]);
 
-        await say({ text: modelResponse, mrkdwn: true, link_names: true });
+        await say({ text: modelResponse, mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts });
 
         return await respdone();
+    } else if (message.channel_type === 'channel' || message.channel_type === 'group') {
+        if (message.text && (message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`) || message.channel === process.env.SLACK_BOT_TEST_CHANNEL)) {
+            if (!CONVERSATIONS.get(message.channel)) {
+                CONVERSATIONS.set(message.channel, []);
+            }
+
+            await setStatus({
+                channel_id: message.channel,
+                thread_ts: message.thread_ts || message.ts,
+                status: 'thinking...',
+                loading_messages: [
+                    'Loading jae…',
+                    'Teaching the hamsters to type faster…',
+                    'Untangling the internet cables…',
+                    'Consulting the office goldfish…',
+                    'Polishing up the response just for you…',
+                    'Convincing the AI to stop overthinking…',
+                ],
+            });
+
+            if (!USER_CACHE.has(message.user)) {
+                let userData = (await app.client.users.info({ user: message.user })).user;
+                if (!userData) {
+                    await say({ text: ':warning: Unexpected error: we could not complete your response.' });
+                    return await respdone();
+                } else {
+                    USER_CACHE.set(message.user, userData);
+                }
+            }
+
+            let userData = USER_CACHE.get(message.user) || null;
+
+            const modelResponse = await runAI(message.text, CONVERSATIONS.get(message.channel) || [], { 
+                uid: message.user, 
+                cid: message.channel, 
+                ct: message.channel_type, 
+                cn: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
+                un: userData.real_name || userData.name, 
+                s: { e: emoji.emojify(userData.profile.status_emoji), t: userData.profile.status_text },
+                // *just for debug ^^
+                userID: message.user,
+                channelID: message.channel,
+                channelType: message.channel_type === 'channel' ? 'Public Channel' : 'Private Channel',
+                channelName: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
+                userName: userData.real_name || userData.name,
+                userStatusEmoji: emoji.emojify(userData.profile.status_emoji),
+                userStatusText: userData.profile.status_text
+            });
+
+            CONVERSATIONS.set(message.channel, [
+                ...(CONVERSATIONS.get(message.channel) || []),
+                { role: 'user', content: message.text },
+                { role: 'assistant', content: modelResponse }
+            ]);
+
+            await say({ text: modelResponse, mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
+
+            return await respdone();
+        }
     }
 });
 
 (async () => {
     await app.start();
+
 
     try {
         const result = await app.client.conversations.list({ types: 'public_channel,private_channel' });

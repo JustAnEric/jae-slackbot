@@ -40,7 +40,11 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 
 - [ ] tool calling
 - [ ] use Slack's agent functionality for better responses (expanding further from DMs)
-- [ ] response streaming to Slacks
+- [ ] response streaming to Slack
+- [ ] beautiful Slack agent responses
+    - [ ] thinking block
+    - [ ] canvas creation for code
+    - [ ] reliable markdown beyond the system prompt
 
 ## ⬇️ Setup
 
@@ -57,6 +61,9 @@ Make sure the contents are similar to below and you grab your own app/oauth toke
 ```ini
 SLACK_BOT_TOKEN=...
 SLACK_APP_TOKEN=...
+SLACK_BOT_MEMBER_ID=U0BRTN1TS1H
+SLACK_BOT_TEST_CHANNEL=C0BS4G20ZR7
+
 OLLAMA_HOST=127.0.0.1:11434
 MODEL=gemma4:e2b
 CONTEXT_WINDOW_SIZE=32768
