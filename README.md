@@ -14,7 +14,7 @@
 
 Jae is an AI bot that runs *blazing fast* on the Hack Club Slack, and this repository is for the code that powers her.
 
-(The running version on the Slack is already configured to run local models.)
+(The running version on the Slack is already configured to run @JustAnEric's local, at home models.)
 
 ## Features
 
