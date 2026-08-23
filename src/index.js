@@ -34,6 +34,12 @@ function promptTemplate(template, vars) {
     });
 }
 
+function makeMessageContent(messageInfoProps = {}) {
+    const { user, text } = messageInfoProps;
+    const userData = USER_CACHE.get(user) || {};
+    return `<MESSAGE_INFO><AUTHOR><MENTION><@${user}></MENTION><NAME>${userData.real_name || userData.name || 'Unknown User'}</NAME></AUTHOR></MESSAGE_INFO><CONTENT>${text}</CONTENT>`;
+}
+
 async function runAI(prompt, conversation = [], additionalData = {}) {
     console.log('doing ollama request');
 
@@ -133,6 +139,25 @@ app.message(async ({ say, message, setStatus }) => {
 
         let userData = USER_CACHE.get(message.user) || null;
 
+        // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
+        if (message.thread_ts && !CONVERSATIONS.get(threadKey)) {
+            try {
+                const result = await app.client.conversations.replies({
+                    channel: message.channel,
+                    ts: message.thread_ts
+                });
+
+                if (result && result.messages) {
+                    const threadMessages = result.messages.map(msg => {
+                        return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: makeMessageContent({ user: msg.user, text: msg.text }) };
+                    });
+                    CONVERSATIONS.set(threadKey, threadMessages);
+                }
+            } catch (e) {
+                console.error("failed to fetch thread messages:", e);
+            }
+        }
+
         const modelResponse = await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
             uid: message.user, 
             cid: message.channel, 
@@ -152,7 +177,7 @@ app.message(async ({ say, message, setStatus }) => {
         
         CONVERSATIONS.set(threadKey, [
             ...(CONVERSATIONS.get(threadKey) || []),
-            { role: 'user', content: message.text },
+            { role: 'user', content: makeMessageContent({ user: message.user, text: message.text }) },
             { role: 'assistant', content: modelResponse }
         ]);
 
@@ -210,7 +235,7 @@ app.message(async ({ say, message, setStatus }) => {
 
             CONVERSATIONS.set(threadKey, [
                 ...(CONVERSATIONS.get(threadKey) || []),
-                { role: 'user', content: message.text },
+                { role: 'user', content: makeMessageContent({ user: message.user, text: message.text }) },
                 { role: 'assistant', content: modelResponse }
             ]);
 
