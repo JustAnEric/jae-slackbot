@@ -1,5 +1,9 @@
 # 😊 Jae slackbot
 
+<p align="center">
+  <a href="images/banner.v2.png"><img src="images/banner.v2.png" alt="V2 Project Banner"></a>
+</p>
+
 > @JustAnEric: come up /w a cool quote so i can put it on your github page, probably reference yourself
 >
 > Assistant:
@@ -15,6 +19,21 @@
 Jae is an AI bot that runs *blazing fast* on the Hack Club Slack, and this repository is for the code that powers her.
 
 (The running version on the Slack is already configured to run @JustAnEric's local, at home models.)
+
+<p align="center">
+  <a href="images/demo.1.png"><img src="images/demo.1.png" alt="Project Demo 1"></a>
+</p>
+
+> [!NOTE]
+> The very first demo you can see above is **not everything** as it can be out-of-date; it now has the features below.
+
+## 🧪 Try It Out!
+
+You can check out **the Hack Club version** [in a channel](https://hackclub.enterprise.slack.com/archives/C0BS4G20ZR7) or [in a DM](https://hackclub.enterprise.slack.com/team/U0BRTN1TS1H) (it's free-to-use and online 24/7; *forever* <3)
+
+**OR**
+
+you can locally [install it](#️-setup) to a Slack bot you own yourself.
 
 ## Features
 

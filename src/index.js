@@ -236,7 +236,7 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
             await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
         } else {
             // it's an asynciterator
-            const stream = sayStream({ thread_ts: message.thread_ts || message.ts });
+            const stream = sayStream({ thread_ts: message.thread_ts || message.ts, task_display_mode: "plan" });
             try {
                 let thinkingBuffer = '';
                 let activeStepsMap = new Map();
@@ -249,6 +249,7 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
                     if (hasThinkingField && thinkingChunk) {
                         thinkingBuffer += thinkingChunk;
+                        modelResponse[2] += thinkingChunk;
 
                         const newNewlinePos = thinkingBuffer.lastIndexOf('\n');
                         if (newNewlinePos > lastNewlinePos) {
@@ -406,6 +407,7 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
                         if (hasThinkingField && thinkingChunk) {
                             thinkingBuffer += thinkingChunk;
+                            modelResponse[2] += thinkingChunk;
 
                             const newNewlinePos = thinkingBuffer.lastIndexOf('\n');
                             if (newNewlinePos > lastNewlinePos) {
