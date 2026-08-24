@@ -212,7 +212,7 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
             }
         }
 
-        let modelResponse = [await runAI(message.text, CONVERSATIONS.get(threadKey) || [], { 
+        let modelResponse = [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-parseInt(process.env.MAX_PREVIOUS_MESSAGES || "15")), { 
             uid: message.user, 
             cid: message.channel, 
             ct: message.channel_type, 
@@ -369,7 +369,7 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                 }
             }
 
-            let modelResponse = [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-15), { 
+            let modelResponse = [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-parseInt(process.env.MAX_PREVIOUS_MESSAGES || "15")), { 
                 uid: message.user, 
                 cid: message.channel, 
                 ct: message.channel_type, 

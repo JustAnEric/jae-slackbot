@@ -39,6 +39,7 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 ### ✈️ AI Agent
 
 - [ ] tool calling
+- [ ] context compression for older messages
 - [X] use Slack's agent functionality for better responses (expanding further from DMs)
 - [X] response streaming to Slack
 - [ ] beautiful Slack agent responses
@@ -70,6 +71,7 @@ CONTEXT_WINDOW_SIZE=32768
 TEMPERATURE=0.8
 THINKING_MODE=true
 STREAM_MODE=true
+MAX_PREVIOUS_MESSAGES=15
 ```
 Your app *needs* these OAuth bot token scopes (these can change frequently after updates):
 ```lua
