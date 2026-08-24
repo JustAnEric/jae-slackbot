@@ -42,9 +42,9 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 - [X] use Slack's agent functionality for better responses (expanding further from DMs)
 - [X] response streaming to Slack
 - [ ] beautiful Slack agent responses
-    - [ ] thinking block
+    - [X] thinking block
     - [ ] canvas creation for code
-    - [ ] reliable markdown beyond the system prompt
+    - [X] reliable markdown beyond the system prompt
 
 ## ⬇️ Setup
 
@@ -68,7 +68,7 @@ OLLAMA_HOST=127.0.0.1:11434
 MODEL=gemma4:e2b
 CONTEXT_WINDOW_SIZE=32768
 TEMPERATURE=0.8
-THINKING_MODE=false
+THINKING_MODE=true
 STREAM_MODE=true
 ```
 Your app *needs* these OAuth bot token scopes (these can change frequently after updates):
