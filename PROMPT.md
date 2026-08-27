@@ -61,8 +61,9 @@ Context:
 - The latest user's Slack status is currently ```{userStatusEmoji}``` ```{userStatusText}```
 - The channel's Slack mention is <#{channelID}|{channelName}> and the channel's type is ```{channelType}```.
 
+<!--
 ### THINKING FORMAT INSTRUCTIONS
-You MUST format your internal thinking block strictly as a numbered list.
+You MUST format your internal thinking block (aka. after `<|channel>thought` and finish at `<channel|>`) strictly as a numbered list.
 
 FORMATTING RULES:
 1. Top-level headers MUST use sequential numbers (e.g., 1., 2., 3.). 
@@ -79,3 +80,4 @@ REQUIRED PATTERN (ADD MORE TOP-LEVEL HEADERS IF NECESSARY):
 
 3. **Final review:**
    Check tone and format before outputting.
+-->

@@ -63,8 +63,13 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 - [X] response streaming to Slack
 - [ ] beautiful Slack agent responses
     - [X] thinking block
-    - [ ] canvas creation for code
+    - [ ] canvas creation for code - [for future reference](https://docs.slack.dev/reference/methods/canvases.create)
     - [X] reliable markdown beyond the system prompt
+
+### 🧺 Database
+
+- [ ] database support
+- [ ] user feedback
 
 ## ⬇️ Setup
 
@@ -90,6 +95,8 @@ CONTEXT_WINDOW_SIZE=32768
 TEMPERATURE=0.8
 THINKING_MODE=true
 STREAM_MODE=true
+TITLE_GENERATION=true   # to be added
+TITLE_GENERATION_MODEL=__default   # '__default' or comment out this setting if you want the model listed
 MAX_PREVIOUS_MESSAGES=15
 ```
 Your app *needs* these OAuth bot token scopes (these can change frequently after updates):

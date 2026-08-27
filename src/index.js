@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./start-checks")();
 
 const axios = require("axios");
 const emoji = require('node-emoji');
@@ -8,14 +9,15 @@ const remark = require('remark');
 const remarkRemoveComments = require('remark-remove-comments');
 
 const { App } = require("@slack/bolt");
-const { Ollama } = require("ollama");
+
+const { ollama } = require("./globals");
+const { Stream } = require("./streaming");
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
     appToken: process.env.SLACK_APP_TOKEN,
     socketMode: true
 });
-const ollama = new Ollama({ host: process.env.OLLAMA_HOST });
 
 const CONVERSATIONS = new Map();
 const CHANNEL_CACHE = new Map();
@@ -39,52 +41,6 @@ function makeMessageContent(messageInfoProps = {}) {
     const userData = USER_CACHE.get(user) || {};
     return `<MESSAGE_INFO><AUTHOR><MENTION><@${user}></MENTION><NAME>${userData.real_name || userData.name || 'Unknown User'}</NAME></AUTHOR></MESSAGE_INFO><CONTENT>${text}</CONTENT>`;
 }
-
-const parseThinkingSections = (thinkingText, { final = false } = {}) => {
-    const source = String(thinkingText || '');
-    if (!source.trim()) return [];
-
-    const sections = [];
-    let current = null;
-
-    const pushCurrent = () => {
-        if (!current) return;
-        const body = current.body.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-        if (current.title || body) sections.push({ title: current.title, body });
-    };
-
-    const lines = source.split('\n');
-    const linesToProcess = final || source.endsWith('\n') ? lines : lines.slice(0, -1);
-
-    for (const rawLine of linesToProcess) {
-        const trimmed = rawLine.trim();
-        if (!trimmed) continue;
-
-        const numberedMatch = trimmed.match(/^\d+\.\s*(.+)$/);
-        if (numberedMatch) {
-            pushCurrent();
-            const rest = numberedMatch[1].trim();
-            const headingMatch = rest.match(/^(?:\*\*)?([^:*]+?)(?:\*\*)?:\s*(.*)$/);
-            const title = (headingMatch ? headingMatch[1] : rest).replaceAll('*', '').trim();
-            const remainder = headingMatch ? headingMatch[2].replaceAll('*', '').trim() : '';
-            current = { title, body: [] };
-            if (remainder) current.body.push(remainder);
-            continue;
-        }
-
-        if (!current) continue;
-
-        const lineBody = trimmed
-            .replace(/^[-*•]\s+/, '')
-            .replaceAll('*', '')
-            .trim();
-
-        if (lineBody) current.body.push(lineBody);
-    }
-
-    pushCurrent();
-    return sections;
-};
 
 async function runAI(prompt, conversation = [], additionalData = {}) {
     console.log('doing ollama request');
@@ -236,88 +192,18 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
             await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
         } else {
             // it's an asynciterator
-            const stream = sayStream({ thread_ts: message.thread_ts || message.ts, task_display_mode: "plan" });
+            const stream = new Stream(sayStream, message);
+            const streamProc = stream.process(modelResponse);
             try {
-                let thinkingBuffer = '';
-                let activeStepsMap = new Map();
-                let reasoningInitialized = false;
-                let lastNewlinePos = 0;
-
-                for await (const part of modelResponse[0]) {
-                    const hasThinkingField = typeof part?.message?.thinking === 'string';
-                    const thinkingChunk = hasThinkingField ? part.message.thinking : '';
-
-                    if (hasThinkingField && thinkingChunk) {
-                        thinkingBuffer += thinkingChunk;
-                        modelResponse[2] += thinkingChunk;
-
-                        const newNewlinePos = thinkingBuffer.lastIndexOf('\n');
-                        if (newNewlinePos > lastNewlinePos) {
-                            lastNewlinePos = newNewlinePos;
-
-                            if (!reasoningInitialized) {
-                                reasoningInitialized = true;
-                                await stream.append({
-                                    chunks: [{ type: "plan_update", title: "My thoughts" }]
-                                });
-                            }
-
-                            const sections = parseThinkingSections(thinkingBuffer);
-                            const chunksToEmit = [];
-
-                            for (let i = 0; i < sections.length; i++) {
-                                const section = sections[i];
-                                const stepId = `step_${i + 1}`;
-                                const isCompletedStep = i < sections.length - 1;
-                                const existing = activeStepsMap.get(stepId);
-
-                                if (!existing) {
-                                    chunksToEmit.push({ type: "task_update", id: stepId, title: section.title, status: "in_progress" });
-                                    activeStepsMap.set(stepId, { title: section.title, sentDetails: false });
-                                } else if (isCompletedStep && !existing.sentDetails) {
-                                    chunksToEmit.push({ type: "task_update", id: stepId, title: section.title, status: "complete", details: section.body || undefined });
-                                    activeStepsMap.get(stepId).sentDetails = true;
-                                }
-                            }
-
-                            if (chunksToEmit.length > 0) {
-                                await stream.append({ chunks: chunksToEmit });
-                            }
-                        }
-                    }
-
-                    if (part.message.content) {
-                        modelResponse[1] += part.message.content;
-
-                        if (reasoningInitialized && activeStepsMap.size > 0) {
-                            const sections = parseThinkingSections(thinkingBuffer, { final: true });
-                            const finalEmits = [];
-
-                            sections.forEach((section, index) => {
-                                const stepId = `step_${index + 1}`;
-                                const existing = activeStepsMap.get(stepId);
-                                finalEmits.push({
-                                    type: "task_update",
-                                    id: stepId,
-                                    title: section.title,
-                                    status: "complete",
-                                    details: (!existing?.sentDetails && section.body) ? section.body : undefined
-                                });
-                            });
-
-                            await stream.append({ chunks: finalEmits });
-                            activeStepsMap.clear();
-                            thinkingBuffer = ''; // reset so re-entries are clean
-                            reasoningInitialized = false;
-                            lastNewlinePos = 0;
-                        }
-
-                        await stream.append({ markdown_text: part.message.content });
-                    }
-
-                    if (part.done) break;
+                for await (const mut of streamProc) {
+                    modelResponse[1] = mut[1];
+                    modelResponse[2] = mut[2];
+                    console.log(modelResponse[1]);
+                    console.log('---');
+                    console.log(modelResponse[2]);
                 }
             } catch (e) {
+                console.log(e);
                 await stream.append({ markdown_text: '\n\n:x:' }); // marks an error
             } finally {
                 await stream.stop();
@@ -394,90 +280,18 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                 await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
             } else {
                 // it's an asynciterator
-                const stream = sayStream({ thread_ts: message.thread_ts || message.ts, task_display_mode: "plan" });
+                const stream = new Stream(sayStream, message);
+                const streamProc = stream.process(modelResponse);
                 try {
-                    let thinkingBuffer = '';
-                    let activeStepsMap = new Map();
-                    let reasoningInitialized = false;
-                    let lastNewlinePos = 0;
-
-                    for await (const part of modelResponse[0]) {
-                        const hasThinkingField = typeof part?.message?.thinking === 'string';
-                        const thinkingChunk = hasThinkingField ? part.message.thinking : '';
-
-                        if (hasThinkingField && thinkingChunk) {
-                            thinkingBuffer += thinkingChunk;
-                            modelResponse[2] += thinkingChunk;
-
-                            const newNewlinePos = thinkingBuffer.lastIndexOf('\n');
-                            if (newNewlinePos > lastNewlinePos) {
-                                lastNewlinePos = newNewlinePos;
-
-                                if (!reasoningInitialized) {
-                                    reasoningInitialized = true;
-                                    await stream.append({
-                                        chunks: [{ type: "plan_update", title: "My thoughts" }]
-                                    });
-                                }
-
-                                const sections = parseThinkingSections(thinkingBuffer);
-                                const chunksToEmit = [];
-
-                                for (let i = 0; i < sections.length; i++) {
-                                    const section = sections[i];
-                                    const stepId = `step_${i + 1}`;
-                                    const isCompletedStep = i < sections.length - 1;
-                                    const existing = activeStepsMap.get(stepId);
-
-                                    if (!existing) {
-                                        chunksToEmit.push({ type: "task_update", id: stepId, title: section.title, status: "in_progress" });
-                                        activeStepsMap.set(stepId, { title: section.title, sentDetails: false });
-                                    } else if (isCompletedStep && !existing.sentDetails) {
-                                        chunksToEmit.push({ type: "task_update", id: stepId, title: section.title, status: "complete", details: section.body || undefined });
-                                        activeStepsMap.get(stepId).sentDetails = true;
-                                    }
-                                }
-
-                                if (chunksToEmit.length > 0) {
-                                    await stream.append({ chunks: chunksToEmit });
-                                }
-                            }
-                        }
-
-                        if (part?.message?.content) {
-                            modelResponse[1] += part.message.content;
-
-                            if (reasoningInitialized && activeStepsMap.size > 0) {
-                                const sections = parseThinkingSections(thinkingBuffer, { final: true });
-                                const finalEmits = [];
-
-                                sections.forEach((section, index) => {
-                                    const stepId = `step_${index + 1}`;
-                                    const existing = activeStepsMap.get(stepId);
-                                    finalEmits.push({
-                                        type: "task_update",
-                                        id: stepId,
-                                        title: section.title,
-                                        status: "complete",
-                                        details: (!existing?.sentDetails && section.body) ? section.body : undefined
-                                    });
-                                });
-
-                                await stream.append({ chunks: finalEmits });
-                                activeStepsMap.clear();
-                                thinkingBuffer = ''; // reset so re-entries are clean
-                                reasoningInitialized = false;
-                                lastNewlinePos = 0;
-                            }
-
-                            await stream.append({
-                                markdown_text: part.message.content
-                            });
-                        }
-
-                        if (part.done) break;
+                    for await (const mut of streamProc) {
+                        modelResponse[1] = mut[1];
+                        modelResponse[2] = mut[2];
+                        console.log(modelResponse[1]);
+                        console.log('---');
+                        console.log(modelResponse[2]);
                     }
                 } catch (e) {
+                    console.log(e);
                     await stream.append({ markdown_text: '\n\n:x:' }); // marks an error
                 } finally {
                     await stream.stop();
