@@ -101,11 +101,32 @@ ${response.data.punchline}`
 });
 
 app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
+    const threadKey = `${message.channel}:${message.thread_ts || message.ts}`;
+
     async function respdone() {
         // Clear status when done
         try {
             if (setStatus) await setStatus("");
         } catch (e) {}
+    }
+
+    async function makemodelresponse() {
+        return [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-parseInt(process.env.MAX_PREVIOUS_MESSAGES || "15")), { 
+            uid: message.user, 
+            cid: message.channel, 
+            ct: message.channel_type, 
+            cn: message.channel_type === 'im' ? 'dm' : (CHANNEL_CACHE.get(message.channel)?.name || 'unknown'), 
+            un: userData.real_name || userData.name, 
+            s: { e: emoji.emojify(userData.profile.status_emoji || ''), t: userData.profile.status_text },
+            // *just for debug ^^
+            userID: message.user,
+            channelID: message.channel,
+            channelType: 'Direct Message Channel',
+            channelName: 'dm',
+            userName: userData.real_name || userData.name,
+            userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
+            userStatusText: userData.profile.status_text
+        }), "", ""];
     }
 
     async function setstatus() {
@@ -124,11 +145,27 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
         });
     }
 
+    async function getchannelmessages() {
+        try {
+            const result = await app.client.conversations.replies({
+                channel: message.channel,
+                ts: message.thread_ts
+            });
+
+            if (result && result.messages) {
+                const threadMessages = result.messages.map(msg => {
+                    return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
+                });
+                CONVERSATIONS.set(threadKey, threadMessages);
+            }
+        } catch (e) {
+            console.error("failed to fetch thread messages:", e);
+        }
+    }
+
     const subtype = event.subtype || message.subtype;
 
     if (subtype) return;
-
-    const threadKey = `${message.channel}:${message.thread_ts || message.ts}`;
 
     if (message.channel_type == "im" && message.channel.startsWith('D') && message.text) {
         if (!CONVERSATIONS.get(threadKey)) {
@@ -151,39 +188,10 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
         // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
         if (message.thread_ts && (!CONVERSATIONS.get(threadKey) || (CONVERSATIONS.get(threadKey) || []).length == 0)) {
-            try {
-                const result = await app.client.conversations.replies({
-                    channel: message.channel,
-                    ts: message.thread_ts
-                });
-
-                if (result && result.messages) {
-                    const threadMessages = result.messages.map(msg => {
-                        return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
-                    });
-                    CONVERSATIONS.set(threadKey, threadMessages);
-                }
-            } catch (e) {
-                console.error("failed to fetch thread messages:", e);
-            }
+            await getchannelmessages();
         }
 
-        let modelResponse = [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-parseInt(process.env.MAX_PREVIOUS_MESSAGES || "15")), { 
-            uid: message.user, 
-            cid: message.channel, 
-            ct: message.channel_type, 
-            cn: message.channel_type === 'im' ? 'dm' : (CHANNEL_CACHE.get(message.channel)?.name || 'unknown'), 
-            un: userData.real_name || userData.name, 
-            s: { e: emoji.emojify(userData.profile.status_emoji || ''), t: userData.profile.status_text },
-            // *just for debug ^^
-            userID: message.user,
-            channelID: message.channel,
-            channelType: 'Direct Message Channel',
-            channelName: 'dm',
-            userName: userData.real_name || userData.name,
-            userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
-            userStatusText: userData.profile.status_text
-        }), "", ""];
+        let modelResponse = await makemodelresponse();
 
         if (modelResponse[0].constructor.name == "ChatResponse") {
             // not streaming
@@ -239,39 +247,10 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
             // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
             if (message.thread_ts && (!CONVERSATIONS.get(threadKey) || (CONVERSATIONS.get(threadKey) || []).length == 0)) {
-                try {
-                    const result = await app.client.conversations.replies({
-                        channel: message.channel,
-                        ts: message.thread_ts
-                    });
-
-                    if (result && result.messages) {
-                        const threadMessages = result.messages.map(msg => {
-                            return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
-                        });
-                        CONVERSATIONS.set(threadKey, threadMessages);
-                    }
-                } catch (e) {
-                    console.error("failed to fetch thread messages:", e);
-                }
+                await getchannelmessages();
             }
 
-            let modelResponse = [await runAI(message.text, (CONVERSATIONS.get(threadKey) || []).slice(-parseInt(process.env.MAX_PREVIOUS_MESSAGES || "15")), { 
-                uid: message.user, 
-                cid: message.channel, 
-                ct: message.channel_type, 
-                cn: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
-                un: userData.real_name || userData.name, 
-                s: { e: emoji.emojify(userData.profile.status_emoji || ''), t: userData.profile.status_text },
-                // *just for debug ^^
-                userID: message.user,
-                channelID: message.channel,
-                channelType: message.channel_type === 'channel' ? 'Public Channel' : 'Private Channel',
-                channelName: CHANNEL_CACHE.get(message.channel)?.name || 'unknown',
-                userName: userData.real_name || userData.name,
-                userStatusEmoji: emoji.emojify(userData.profile.status_emoji || ''),
-                userStatusText: userData.profile.status_text
-            }), "", ""];
+            let modelResponse = await makemodelresponse();
 
             if (modelResponse[0].constructor.name == "ChatResponse") {
                 // not streaming
