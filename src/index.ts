@@ -6,13 +6,14 @@ const emoji = require('node-emoji');
 import remark from 'remark';
 import remarkRemoveComments from 'remark-remove-comments';
 
-import { App } from "@slack/bolt";
+import { App, BlockAction, ButtonAction } from "@slack/bolt";
+import { GenericMessageEvent } from "@slack/types";
+import { AbortableAsyncIterator, ChatResponse } from "ollama";
 
 import globals from "./globals";
 import { Stream } from "./streaming";
-import { GenericMessageEvent } from "@slack/types";
 import { Tools } from "./tool-calling";
-import { AbortableAsyncIterator, ChatResponse } from "ollama";
+import { PENDING_FEEDBACK, db, insertFeedback } from "./feedback";
 
 const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -104,6 +105,104 @@ ${response.data.punchline}`
     }
 });
 
+app.action("feedback_positive", async ({ ack, body, client }) => {
+    await ack();
+    const bkaction = body as BlockAction<ButtonAction>;
+    const messageTs = bkaction.message?.ts || '';
+    const channelId = bkaction.channel?.id || '';
+    const pending = PENDING_FEEDBACK.get(messageTs);
+
+    if (!pending) {
+        //await respond({ response_type: "ephemeral", markdown_text: 'This message has already had feedback!' });
+        await client.chat.postEphemeral({
+            channel: channelId,
+            user: bkaction.user.id,
+            thread_ts: messageTs,
+            text: "This message has already had feedback!"
+        });
+        return;
+    }
+
+    if (pending?.userId != bkaction.user.id) {
+        //await respond({ response_type: "ephemeral", markdown_text: 'You cannot vote on this message, this is not *your* message.' });
+        await client.chat.postEphemeral({
+            channel: channelId,
+            user: bkaction.user.id,
+            thread_ts: messageTs,
+            markdown_text: "You cannot vote on this message, this is not *your* message."
+        });
+        return;
+    }
+
+    insertFeedback.run(
+        messageTs,
+        pending?.threadKey,
+        bkaction.user.id,
+        'positive',
+        pending?.userMessage,
+        pending?.modelMessages,
+        Date.now()
+    );
+
+    await client.chat.postEphemeral({
+        channel: channelId,
+        user: bkaction.user.id,
+        thread_ts: messageTs,
+        text: "👍 Got it, thanks!"
+    });
+
+    PENDING_FEEDBACK.delete(messageTs);
+});
+
+app.action("feedback_negative", async ({ ack, body, client }) => {
+    await ack();
+    const bkaction = body as BlockAction<ButtonAction>;
+    const messageTs = bkaction.message?.ts || '';
+    const channelId = bkaction.channel?.id || '';
+    const pending = PENDING_FEEDBACK.get(messageTs);
+
+    if (!pending) {
+        //await respond({ response_type: "ephemeral", markdown_text: 'This message has already had feedback!' });
+        await client.chat.postEphemeral({
+            channel: channelId,
+            user: bkaction.user.id,
+            thread_ts: messageTs,
+            text: "This message has already had feedback!"
+        });
+        return;
+    }
+
+    if (pending?.userId != bkaction.user.id) {
+        //await respond({ response_type: "ephemeral", markdown_text: 'You cannot vote on this message, this is not *your* message.' });
+        await client.chat.postEphemeral({
+            channel: channelId,
+            user: bkaction.user.id,
+            thread_ts: messageTs,
+            markdown_text: "You cannot vote on this message, this is not *your* message."
+        });
+        return;
+    }
+
+    insertFeedback.run(
+        messageTs,
+        pending?.threadKey,
+        bkaction.user.id,
+        'negative',
+        pending?.userMessage,
+        pending?.modelMessages,
+        Date.now()
+    );
+
+    await client.chat.postEphemeral({
+        channel: channelId,
+        user: bkaction.user.id,
+        thread_ts: messageTs,
+        text: "I've got your feedback, your negativity will be investigated! 😅"
+    });
+
+    PENDING_FEEDBACK.delete(messageTs);
+});
+
 app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
     if (event.subtype) return;
     if (message.subtype) return;
@@ -180,7 +279,26 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
             if (result && result.messages) {
                 const threadMessages = result.messages.map(msg => {
-                    return { role: msg.user === process.env.SLACK_BOT_MEMBER_ID ? 'assistant' : 'user', content: msg.user === process.env.SLACK_BOT_MEMBER_ID ? msg.text : makeMessageContent({ user: msg.user, text: msg.text }) };
+                    if (msg.user === process.env.SLACK_BOT_MEMBER_ID) {
+                        let content = (msg.blocks || [])
+                            .filter((b: any) => b.type !== 'actions')
+                            .flatMap((b: any) => {
+                                if (b.type === 'rich_text') {
+                                    return b.elements?.flatMap((el: any) =>
+                                        el.elements?.map((e: any) => e.text || '').join('') || ''
+                                    ) || [];
+                                }
+                                if (b.type === 'section') {
+                                    return [b.text?.text || ''];
+                                }
+                                return [];
+                            })
+                            .join('\n')
+                            .trim() || msg.text || '';
+                        return { role: 'assistant', content: content };
+                    } else {
+                        return { role: 'user', content: makeMessageContent({ user: msg.user, text: msg.text }) };
+                    }
                 });
                 CONVERSATIONS.set(threadKey, threadMessages);
             }
@@ -200,6 +318,8 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
         let messageSet = false;
         let stream: Stream | null = null;
 
+        let mr = [];
+
         while (true) {
             let modelResponse = await makemodelresponse(process.env.STREAM_MODE?.toLowerCase().trim() == "true" ? true : false);
             let hadToolCalls = false;
@@ -217,7 +337,36 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                 modelResponse[1] = (modelResponse[0] as ChatResponse).message.content;
                 modelResponse[2] = (modelResponse[0] as ChatResponse).message.thinking || "";
 
-                await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
+                mr.push(modelResponse);
+
+                const blocks = [
+                    {
+                        type: "actions",
+                        elements: [
+                            {
+                                type: "button",
+                                text: { type: "plain_text", text: "👍" },
+                                action_id: "feedback_positive",
+                                value: message.ts
+                            },
+                            {
+                                type: "button",
+                                text: { type: "plain_text", text: "👎" },
+                                action_id: "feedback_negative",
+                                value: message.ts
+                            }
+                        ]
+                    }
+                ];
+
+                const m = await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts, blocks }); // reply in thread
+
+                if (m.ok && m.ts) PENDING_FEEDBACK.set(m.ts, {
+                    userMessage: message.text || '',
+                    modelMessages: JSON.stringify(mr),
+                    threadKey,
+                    userId: message.user
+                });
             } else {
                 // it's an asynciterator
 
@@ -265,7 +414,45 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                 ]);
             }
 
+            mr.push(modelResponse);
+
             if (!hadToolCalls) break;
+        }
+
+        if (stream?.stream.ts) {
+            PENDING_FEEDBACK.set(stream?.stream.ts, {
+                userMessage: message.text || '',
+                modelMessages: JSON.stringify(mr),
+                threadKey,
+                userId: message.user
+            });
+
+            await stream?.append({
+                chunks: [
+                    {
+                        type: "blocks",
+                        blocks: [
+                            {
+                                type: "actions",
+                                elements: [
+                                    {
+                                        type: "button",
+                                        text: { type: "plain_text", text: "👍" },
+                                        action_id: "feedback_positive",
+                                        value: message.ts
+                                    },
+                                    {
+                                        type: "button",
+                                        text: { type: "plain_text", text: "👎" },
+                                        action_id: "feedback_negative",
+                                        value: message.ts
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            });
         }
 
         await stream?.stop();
@@ -282,6 +469,8 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
             let messageSet = false;
             let stream: Stream | null = null;
+
+            let mr = [];
 
             while (true) {
                 let modelResponse = await makemodelresponse(process.env.STREAM_MODE?.toLowerCase().trim() == "true" ? true : false);
@@ -300,7 +489,36 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                     modelResponse[1] = (modelResponse[0] as ChatResponse).message.content;
                     modelResponse[2] = (modelResponse[0] as ChatResponse).message.thinking || "";
 
-                    await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts }); // reply in thread
+                    mr.push(modelResponse);
+
+                    const blocks = [
+                        {
+                            type: "actions",
+                            elements: [
+                                {
+                                    type: "button",
+                                    text: { type: "plain_text", text: "👍" },
+                                    action_id: "feedback_positive",
+                                    value: message.ts
+                                },
+                                {
+                                    type: "button",
+                                    text: { type: "plain_text", text: "👎" },
+                                    action_id: "feedback_negative",
+                                    value: message.ts
+                                }
+                            ]
+                        }
+                    ];
+
+                    const m = await say({ text: modelResponse[1], mrkdwn: true, link_names: true, thread_ts: message.thread_ts || message.ts, blocks }); // reply in thread
+
+                    if (m.ok && m.ts) PENDING_FEEDBACK.set(m.ts, {
+                        userMessage: message.text || '',
+                        modelMessages: JSON.stringify(mr),
+                        threadKey,
+                        userId: message.user
+                    });
                 } else {
                     // it's an asynciterator
 
@@ -347,7 +565,45 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                     ]);
                 }
 
+                mr.push(modelResponse);
+
                 if (!hadToolCalls) break;
+            }
+
+            if (stream?.stream.ts) {
+                PENDING_FEEDBACK.set(stream?.stream.ts, {
+                    userMessage: message.text || '',
+                    modelMessages: JSON.stringify(mr),
+                    threadKey,
+                    userId: message.user
+                });
+
+                await stream?.append({
+                    chunks: [
+                        {
+                            type: "blocks",
+                            blocks: [
+                                {
+                                    type: "actions",
+                                    elements: [
+                                        {
+                                            type: "button",
+                                            text: { type: "plain_text", text: "👍" },
+                                            action_id: "feedback_positive",
+                                            value: message.ts
+                                        },
+                                        {
+                                            type: "button",
+                                            text: { type: "plain_text", text: "👎" },
+                                            action_id: "feedback_negative",
+                                            value: message.ts
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                });
             }
 
             await stream?.stop();

@@ -1,6 +1,6 @@
 import type { SayStreamFn } from "@slack/bolt";
 import type { AnyChunk, GenericMessageEvent } from "@slack/types";
-import type { WebClient } from "@slack/web-api";
+import type { ChatAppendStreamArguments, WebClient } from "@slack/web-api";
 import type { ChatResponse, AbortableAsyncIterator } from "ollama";
 
 import type { Tools } from "./tool-calling";
@@ -226,7 +226,7 @@ class Stream {
         return await this.stream.stop();
     }
 
-    async append(data: any) {
+    async append(data: Omit<ChatAppendStreamArguments, 'channel' | 'ts'>) {
         return await this.stream.append(data);
     }
 }

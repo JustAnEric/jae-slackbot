@@ -16,3 +16,10 @@ export interface ToolDefinition {
     type: 'function';
     function: ToolFunctionDefinition;
 }
+
+export interface PendingFeedback {
+    userMessage: string;
+    modelMessages: string;
+    threadKey: string;
+    userId?: string;
+}
