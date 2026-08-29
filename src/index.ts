@@ -78,33 +78,6 @@ app.command("/jae-ping", async ({ command, ack, respond }) => {
     await respond({ text: `Pong!\nLatency: ${latency}ms` });
 });
 
-app.command("/jae-catfact", async ({ ack, respond }) => {
-    await ack();
-
-    try {
-        const response = await axios.get("https://catfact.ninja/fact");
-        await respond({ text: `Cat Fact:\n${response.data.fact}` });
-    } catch (err) {
-        await respond({ text: "Failed to fetch a cat fact." });
-    }
-});
-
-app.command("/jae-joke", async ({ ack, respond }) => {
-    await ack();
-
-    try {
-        const response = await axios.get("https://official-joke-api.appspot.com/random_joke");
-        await respond({
-            text:
-                `${response.data.setup}
-
-${response.data.punchline}`
-        });
-    } catch (err) {
-        await respond({ text: "Failed to fetch a joke." });
-    }
-});
-
 app.action("feedback_positive", async ({ ack, body, client }) => {
     await ack();
     const bkaction = body as BlockAction<ButtonAction>;
