@@ -70,7 +70,7 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 ### 🧺 Database
 
 - [ ] database support
-- [ ] user feedback
+- [X] user feedback
 
 ## ⬇️ Setup
 
