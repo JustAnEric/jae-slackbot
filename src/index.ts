@@ -459,11 +459,11 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
 
         return await respdone();
     } else if ((message.channel_type === 'channel' || message.channel_type === 'group') && (message.channel.startsWith('C') || message.channel.startsWith('G'))) {
-        if (message.text && ((message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`) || message.thread_ts) && message.channel === process.env.SLACK_BOT_TEST_CHANNEL)) {
+        if (message.text && ((message.text.includes(`<@${process.env.SLACK_BOT_MEMBER_ID}>`)) /*|| message.thread_ts) && message.channel === process.env.SLACK_BOT_TEST_CHANNEL*/)) {
             await setstatus();
 
             // check if thread_ts is set, if the thread key is unpopulated, grab messages and populate
-            if (message.thread_ts && (!CONVERSATIONS.get(threadKey) || (CONVERSATIONS.get(threadKey) || []).length == 0)) {
+            if (message.thread_ts) {
                 await getchannelmessages();
             }
 
