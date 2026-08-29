@@ -2,10 +2,11 @@
   "name": "jae",
   "version": "1.0.0",
   "description": "",
-  "main": "src/index.js",
+  "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ."
+    "start": "node .",
+    "build": "tsc"
   },
   "keywords": [],
   "author": "",
@@ -13,11 +14,13 @@
   "type": "commonjs",
   "dependencies": {
     "@slack/bolt": "^5.0.0",
+    "@types/node": "^26.4.0",
     "axios": "^1.19.0",
     "dotenv": "^17.4.2",
     "node-emoji": "^2.2.0",
     "ollama": "^0.6.3",
     "remark": "^15.0.1",
-    "remark-remove-comments": "^1.1.1"
+    "remark-remove-comments": "^1.1.1",
+    "typescript": "^7.0.2"
   }
 }

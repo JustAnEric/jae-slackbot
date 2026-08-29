@@ -57,7 +57,8 @@ Jae needs an API behind her to generate responses. Here's what the current situa
 
 ### ✈️ AI Agent
 
-- [ ] tool calling
+- [X] tool calling
+    - any suggestions for tools to add are appreciated!! [create a new issue](https://github.com/JustAnEric/jae-slackbot/issues/new?template=tool-request.md) or [join the Slack channel](https://hackclub.enterprise.slack.com/archives/C0BS4G20ZR7)!
 - [ ] context compression for older messages
 - [X] use Slack's agent functionality for better responses (expanding further from DMs)
 - [X] response streaming to Slack
@@ -95,6 +96,7 @@ CONTEXT_WINDOW_SIZE=32768
 TEMPERATURE=0.8
 THINKING_MODE=true
 STREAM_MODE=true
+TOOLS_ENABLED=true
 TITLE_GENERATION=true   # to be added
 TITLE_GENERATION_MODEL=__default   # '__default' or comment out this setting if you want the model listed
 MAX_PREVIOUS_MESSAGES=15

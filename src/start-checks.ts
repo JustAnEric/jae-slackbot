@@ -1,23 +1,23 @@
-const globals = require("./globals");
+import globals from "./globals";
 
-module.exports = async () => {
+export default async () => {
     // on jae start
 
-    const REQUIRED_SETTINGS = [['MODEL',typecheck_string_no_default_ollama_model],['SLACK_BOT_TOKEN',typecheck_sc_bt_tk],['SLACK_APP_TOKEN',typecheck_sc_app_tk],['SLACK_BOT_MEMBER_ID',typecheck_sc_uid],['SLACK_BOT_TEST_CHANNEL',typecheck_sc_chid]];
+    const REQUIRED_SETTINGS : Array<[string, Function]> = [['MODEL',typecheck_string_no_default_ollama_model],['SLACK_BOT_TOKEN',typecheck_sc_bt_tk],['SLACK_APP_TOKEN',typecheck_sc_app_tk],['SLACK_BOT_MEMBER_ID',typecheck_sc_uid],['SLACK_BOT_TEST_CHANNEL',typecheck_sc_chid],['TOOLS_ENABLED',typecheck_bool]];
 
     //check all config
-    const envConfigChecked = {};
+    const envConfigChecked: { [key: string]: string | undefined } = {};
 
     for (const [key, value] of Object.entries(process.env)) {
         const fOp = REQUIRED_SETTINGS.find(m=>m[0]==key);
 
-        if (!fOp || fOp.length <= 1) { continue };
+        if (!fOp || fOp.length <= 1 || !fOp[1]) { continue };
 
         const res = await fOp[1](value);
 
         if (!res) {
             const db1 = get_ln_env(key);
-            if (db1) return verbose_error();
+            if (!db1) return verbose_error();
             return verbose_error(db1.linenum,db1.line);
         }
 
@@ -50,6 +50,10 @@ function typecheck_sc_chid(a="") {
 
 async function typecheck_string_no_default_ollama_model(a="") {
     // check if the model exists
+    if (!globals.ollama) {
+        console.warn("CRITICAL    Ollama is disabled!!");
+        return false;
+    }
     const { models } = await globals.ollama.list();
     let modelFound = false;
     for (const model of models) {
@@ -105,7 +109,7 @@ function get_ln_env(settingName="") {
     return { linenum: null, line: null, name: settingName, value: null };
 }
 
-function verbose_error(linenum, line) {
+function verbose_error(linenum: number | undefined | null = null, line: string | undefined | null = null) {
     hlerr();
     if (linenum && line) {
         console.error("There was an error with validating configuration:");
@@ -118,7 +122,7 @@ function verbose_error(linenum, line) {
     process.exit(1);
 }
 
-function render_progress_bar(tt, current, total) {
+function render_progress_bar(tt: string, current: number, total: number) {
     const size = 30;
     const percentage = Math.floor((current / total) * 100);
     const completedLength = Math.round((current / total) * size);
