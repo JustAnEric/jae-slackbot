@@ -137,6 +137,11 @@ This project started out with a template from Hack Club's official guides: [Slac
 
 [Slack docs](https://docs.slack.dev/ai/developing-agents/) were also used for investigating how to build agents on the platform.
 
+## AI declarations
+
+This README file was at first structured by AI, but it is built and expanded upon by me. AI was used nowhere else within this project, but some code was pulled from my past projects (for example with the [dev-execution-server branch](https://github.com/JustAnEric/jae-slackbot/tree/dev-execution-server), I pulled and refactored the simple web server I made for a first Rust project to work with WebSockets!)
+I create my own pull requests, manage whether a feature should be experimental or accessible to the mainstream public (via the main branch), etcetera.
+
 ## History
 
 This is gonna be a starboard for Jae's prized moments during development.
