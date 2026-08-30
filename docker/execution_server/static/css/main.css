@@ -1,0 +1,5 @@
+* { font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; line-height: 1.15; letter-spacing: 1.65px; } 
+code { font-family: monospace; }
+alert { border-left: 2px #98c7da solid; padding-left: 30px; padding-top: 10px; padding-bottom: 10px; }
+a { text-decoration: none; color: #006eff; }
+a:hover { text-decoration: underline dashed; }

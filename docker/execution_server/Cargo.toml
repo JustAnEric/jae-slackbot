@@ -1,0 +1,23 @@
+[package]
+name = "execution_server_jae"
+version = "0.1.0"
+edition = "2021"
+authors = ["Eric Muzyk <ericmuzyk@icloud.com>"]
+description = ""
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+base64 = "0.23.1"
+bollard = "0.21.1"
+bytes = "1.12.1"
+lazy-regex = "3.6.1"
+mimetype-detector = "0.3.11"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha1 = "0.11.0"
+tungstenite = "0.30.0"
+tokio = { version = "1", features = ["rt"] }
+ureq = { version = "3.4.0", features = ["json"] }
+uuid = { version = "1.10", features = ["v4", "fast-rng"] }

@@ -16,6 +16,7 @@
     "@slack/bolt": "^5.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.4.0",
+    "@types/ws": "^8.18.1",
     "axios": "^1.19.0",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^17.4.2",
@@ -23,7 +24,8 @@
     "ollama": "^0.6.3",
     "remark": "^15.0.1",
     "remark-remove-comments": "^1.1.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "ws": "^8.21.3"
   },
   "allowScripts": {
     "better-sqlite3@13.0.3": true

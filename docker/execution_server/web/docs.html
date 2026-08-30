@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jae Execution Server Documentation</title>
+    <link rel="stylesheet" href="/css/main.css" />
+</head>
+<body>
+    <h1>Jae Execution Server</h1>
+    <hr/>
+
+    <p>Jae execution server relies primarily on Docker. It allows for Jae to run commands via her toolset.</p>
+    <p>If you're seeing this page in the browser, it means you probably have already got Docker Compose running, which is great! In here, we'll describe how the protocol works for execution.</p>
+
+    <h2>How tools communicate</h2>
+    <hr/>
+
+    <p>
+        In order to understand this next part, you'll need to understand the premise of WebSockets.
+        The WebSocket protocol allow for persistent, bidirectional communication in ways long-polling or normal HTTP requests don't allow.
+        This server uses the WebSocket protocol at the path <code>/ws</code> and allows for several operations.
+    </p>
+
+    <alert>
+        If you have further questions about WebSockets, it might be best to check out <a href="https://en.wikipedia.org/wiki/WebSocket#Protocol">this article</a>.
+    </alert>
+
+    
+</body>
+</html>
