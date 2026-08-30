@@ -16,7 +16,7 @@ use std::time::Duration;
 #[serde(tag = "type", rename_all = "snake_case")]
 enum OutputEvent {
     Stdout { data: String },
-    Stderr { data: String },
+    //Stderr { data: String },
     StdinRequested { prompt: String },
     Exit { code: i32 },
 }
