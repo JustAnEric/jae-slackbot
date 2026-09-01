@@ -19,8 +19,13 @@ services:
       - DOCKER_HOST=tcp://docker-proxy:2375
     depends_on:
       - docker-proxy
-    ports:
+    ports: # EDIT PORT FORWARDING HERE! hostPort:containerPort/tcp
       - "6200:6200/tcp"
     volumes:
       - ./execution_server/web:/home/runner/web:ro
       - ./execution_server/static:/home/runner/static:ro
+      - ./execution_server/.env:/home/runner/.env:ro
+
+networks:
+  jae-net:
+    internal: false

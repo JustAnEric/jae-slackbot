@@ -21,3 +21,4 @@ tungstenite = "0.30.0"
 tokio = { version = "1", features = ["rt"] }
 ureq = { version = "3.4.0", features = ["json"] }
 uuid = { version = "1.10", features = ["v4", "fast-rng"] }
+dotenvy = "0.15.7"

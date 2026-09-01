@@ -24,7 +24,9 @@
     "ollama": "^0.6.3",
     "remark": "^15.0.1",
     "remark-remove-comments": "^1.1.1",
+    "shlex": "^3.0.0",
     "typescript": "^7.0.2",
+    "uuid": "^14.0.2",
     "ws": "^8.21.3"
   },
   "allowScripts": {

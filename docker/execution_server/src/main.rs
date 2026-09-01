@@ -12,17 +12,19 @@ use serde_json::{self, Number};
 use serde_json::json;
 use serde::Deserialize;
 use serde::Serialize;
+use std::env;
 
 static WEB_TEMPLATE_DIR : &'static str = "web/";
 static STATIC_FILE_DIR : &'static str = "static/";
 
 #[derive(Deserialize, Debug)]
-struct WebSocketData<'a> {
+struct WebSocketData {
     t: String,
-    #[serde(borrow)]
-    cmd: Vec<&'a str>,
+    //#[serde(borrow)]
+    cmd: Option<Vec<String>>,
     ts: Option<Number>,
-    container_id: Option<String>
+    container_id: Option<String>,
+    auth_token: Option<String>
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -468,9 +470,30 @@ static RESPONSES : [(&'static str, fn(stream: TcpStream, req_path: &str, req_met
 fn main() {
     eprintln!("{}", banner());
 
-    let addr = "0.0.0.0:6200";
+    let load_results = dotenvy::dotenv();
+    if let Err(e) = load_results {
+        eprintln!("dotenvy error: {e}");
+    }
+    /*if load_results.is_err() {
+        println!("Error loading environment variables, using default configuration");
+        println!("- WARNING: There is no token in default configuration.");
+    } else {
+        println!("Environment variables loaded successfully");
+    }*/
 
-    let listener = TcpListener::bind(addr).unwrap();
+    let addr = format!(
+        "{}:{}", 
+        match env::var("EXECUTION_SERVER_HOST") {
+            Ok(val) => val,
+            Err(_) => "0.0.0.0".to_string()
+        }, 
+        match env::var("EXECUTION_SERVER_PORT") {
+            Ok(val) => val,
+            Err(_) => "6200".to_string()
+        }
+    );
+
+    let listener = TcpListener::bind(addr.clone()).unwrap();
 
     println!("Listening on {}...", addr);
 
@@ -614,6 +637,20 @@ fn handle_conn(mut stream: TcpStream) {
     }
 }
 
+fn is_server_auth_required() -> bool {
+    match env::var("EXECUTION_SERVER_TOKEN") {
+        Ok(_) => true,
+        Err(_) => false
+    }
+}
+
+fn server_auth_token_value() -> Option<String> {
+    match env::var("EXECUTION_SERVER_TOKEN") {
+        Ok(val) => Some(val),
+        Err(_) => None
+    }
+}
+
 fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
     let Some(key) = headers.get("sec-websocket-key") else {
         eprintln!("missing sec-websocket-key header");
@@ -646,6 +683,7 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
     let (tx, rx) = mpsc::channel::<String>();
 
     let mut containers: Vec<String> = Vec::new();
+    let mut authenticated: bool = false;
 
     let mut docker_writer: Option<TcpStream> = None;
 
@@ -684,6 +722,19 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
 
                     if let Ok(ws_data) = serde_json::from_str::<WebSocketData>(&text) {
                         if ws_data.t == "spawn" {
+                            // api terms
+                            // stop = unauthenticated client when the server requires auth
+                            // steady = operation successfully completed, everything's ok
+                            if !authenticated && is_server_auth_required() {
+                                // if it's not an authenticated client
+                                let ss1 = serde_json::json!({ "type": "spawn_ack", "ack_key": ws_data.ts, "rate": "stop" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for spawn command: unauthenticated client");
+                                }
+                                continue;
+                            }
                             let container_name = format!("jae-box-{}", uuid::Uuid::new_v4().to_string());
                             let proxy_host = "docker-proxy:2375";
 
@@ -695,18 +746,16 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
                             println!("Cmd: {:?}", ws_data.cmd);
 
                             let prox = DockerProxy::new("http://docker-proxy:2375");
-                            let container_id = prox.create_container(container_name.as_str(), "jae-exec-worker", ws_data.cmd).unwrap();
+                            let container_id = prox.create_container(container_name.as_str(), "jae-exec-worker", ws_data.cmd.unwrap_or_default().iter().map(|s| s.as_str()).collect()).unwrap();
 
                             // it's now time to track the container
                             containers.push(container_id.clone());
 
                             let ss1 = serde_json::json!({ "type": "spawn_ack", "ack_key": ws_data.ts, "container_id": container_id.clone(), "rate": "steady" });
-                            let ss = ss1.as_str();
+                            let ss = ss1.to_string();
 
-                            if !ss.is_none() {
-                                if tx.send(ss.unwrap().to_string()).is_ok() {
-                                    println!("Response sent to client for spawn command");
-                                }
+                            if tx.send(ss).is_ok() {
+                                println!("Response sent to client for spawn command");
                             }
 
                             println!("{}", container_id);
@@ -731,7 +780,6 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
                             thread::spawn(move || {
                                 let mut reader = BufReader::new(docker_reader);
 
-                                // 1. STRIP HTTP HEADERS
                                 let mut pattern_state = 0;
                                 let mut byte_buf = [0u8; 1];
 
@@ -748,7 +796,6 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
 
                                 println!("[SERVER]: HTTP headers stripped! Reading raw TTY lines...");
 
-                                // 2. READ RAW TTY LINES
                                 for line in reader.lines() {
                                     let Ok(raw_line) = line else { break };
                                     let trimmed = raw_line.trim();
@@ -776,44 +823,118 @@ fn handle_websocket(mut stream: TcpStream, headers: &HashMap<String, String>) {
                             let e: Result<(), String> = prox.start_container(container_id.as_str());
                             println!("{}", e.is_ok());
                         } else if ws_data.t == "kill" {
+                            // api terms
+                            // stop = unauthenticated client when the server requires auth
+                            // perplexed = no container id from client
+                            // angrily_perplexed = container id is not in the server's list of started containers
+                            // steady = operation successfully completed, everything's ok
+                            eprintln!("kill: authenticated={} container_id={:?} containers={:?}", authenticated, ws_data.container_id, containers);
+                            if !authenticated && is_server_auth_required() {
+                                // if it's not an authenticated client
+                                let ss1 = serde_json::json!({ "type": "kill_ack", "ack_key": ws_data.ts, "rate": "stop" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for kill command: unauthenticated client");
+                                }
+                                continue;
+                            }
                             let prox = DockerProxy::new("http://docker-proxy:2375");
 
                             if ws_data.container_id.is_none() {
                                 let ss1 = serde_json::json!({ "type": "kill_ack", "ack_key": ws_data.ts, "rate": "perplexed" });
-                                let ss = ss1.as_str();
+                                let ss = ss1.to_string();
 
-                                if !ss.is_none() {
-                                    if tx.send(ss.unwrap().to_string()).is_ok() {
-                                        println!("Malformed data on kill");
-                                    }
+                                if tx.send(ss).is_ok() {
+                                    println!("Malformed data on kill");
                                 }
                             } else {
                                 let k = ws_data.container_id.unwrap();
                                 if containers.contains(&k) {
                                     let e: Result<(), String> = prox.kill_container(&k);
-                                    let _ = prox.delete_container(&k, true);
-                                    if e.is_ok() {
-                                        let ss1 = serde_json::json!({ "type": "kill_ack", "ack_key": ws_data.ts, "rate": "steady" });
-                                        let ss = ss1.as_str();
+                                    let b = prox.delete_container(&k, true);
 
-                                        if !ss.is_none() {
-                                            if tx.send(ss.unwrap().to_string()).is_ok() {
-                                                println!("Killed container");
-                                            }
-                                        }
+                                    eprintln!("kill_container result: {:?}", e);
+                                    eprintln!("kill_container result: {:?}", b);
+
+                                    let ss1 = serde_json::json!({ "type": "kill_ack", "ack_key": ws_data.ts, "rate": "steady" });
+                                    let ss = ss1.to_string();
+
+                                    if tx.send(ss).is_ok() {
+                                        println!("Killed container");
                                     }
                                 } else {
                                     let ss1 = serde_json::json!({ "type": "kill_ack", "ack_key": ws_data.ts, "rate": "angrily_perplexed" });
-                                    let ss = ss1.as_str();
+                                    let ss = ss1.to_string();
 
-                                    if !ss.is_none() {
-                                        if tx.send(ss.unwrap().to_string()).is_ok() {
-                                            println!("Out of bounds attempt on kill");
-                                        }
+                                    if tx.send(ss).is_ok() {
+                                        println!("Out of bounds attempt on kill");
                                     }
                                 }
                             }
+                        } else if ws_data.t == "auth" {
+                            // api terms
+                            // mildy_perplexed = server already got an auth request from the client
+                            // perplexed = server did not get an authentication token from the client
+                            // dismiss = server does not require auth
+                            // dead = client sent wrong auth token
+
+                            println!("comparing: {:?} == {:?}", ws_data.auth_token, server_auth_token_value());
+
+                            if authenticated && is_server_auth_required() {
+                                // if it's an authenticated client
+                                let ss1 = serde_json::json!({ "type": "auth_ack", "ack_key": ws_data.ts, "rate": "mildly_perplexed" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for auth command: client is already authenticated");
+                                }
+                                continue;
+                            } else if !is_server_auth_required() {
+                                // if the server does not require authentication
+                                let ss1 = serde_json::json!({ "type": "auth_ack", "ack_key": ws_data.ts, "rate": "dismiss" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for auth command: server does not require auth");
+                                }
+                                continue;
+                            }
+
+                            if ws_data.auth_token.is_none() {
+                                // if the client didn't send an auth token
+                                let ss1 = serde_json::json!({ "type": "auth_ack", "ack_key": ws_data.ts, "rate": "perplexed" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for auth command: server does not require auth");
+                                }
+                                continue;
+                            }
+
+                            if ws_data.auth_token == server_auth_token_value() {
+                                // authenticate client
+                                authenticated = true;
+                                let ss1 = serde_json::json!({ "type": "auth_ack", "ack_key": ws_data.ts, "rate": "steady" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for auth command");
+                                }
+                                continue;
+                            } else {
+                                // wrong auth token client
+                                let ss1 = serde_json::json!({ "type": "auth_ack", "ack_key": ws_data.ts, "rate": "dead" });
+                                let ss = ss1.to_string();
+
+                                if tx.send(ss).is_ok() {
+                                    println!("Response sent to client for auth command: wrong auth token ({:?}): ({:?})", ws_data.auth_token, server_auth_token_value());
+                                }
+                                continue;
+                            }
                         }
+                    } else {
+                        eprintln!("Failed to deserialize: {}", text);
                     }
                 } else if msg.is_close() {
                     println!("Client requested connection close.");
