@@ -37,6 +37,10 @@ you can locally [install it](#host-your-own-setup) to a Slack bot you own yourse
 
 - [X] tool calling
     - any suggestions for tools to add are appreciated!! [create a new issue](https://github.com/JustAnEric/jae-slackbot/issues/new?template=tool-request.md) or [join the Slack channel](https://hackclub.enterprise.slack.com/archives/C0BS4G20ZR7)!
+    - [X] search the web
+    - [ ] extract web page content
+    - [X] stardance integrations (just send Jae a link to a stardance project, a shop item, or ask it to search stardance!)
+    - [X] execution server integration (still in progress but in testing phase as dev continues)
 - [ ] context compression for older messages
 - [X] use Slack's agent functionality for better responses (expanding further from DMs)
 - [X] response streaming to Slack
@@ -80,6 +84,12 @@ TOOLS_ENABLED=true
 TITLE_GENERATION=true   # to be added
 TITLE_GENERATION_MODEL=__default   # '__default' or comment out this setting if you want the model listed
 MAX_PREVIOUS_MESSAGES=15
+
+# tool parameters
+EXECUTION_SERVER=127.0.0.1:6200
+EXECUTION_SERVER_TOKEN=
+
+SEARXNG_SERVER=127.0.0.1:6201
 ```
 Your app *needs* these OAuth bot token scopes (these can change frequently after updates).
 ```lua

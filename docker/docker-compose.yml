@@ -11,6 +11,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: always
+    networks:
+      - jae-net
 
   # jae slack bot / execution server
   jae-server:
@@ -25,7 +27,34 @@ services:
       - ./execution_server/web:/home/runner/web:ro
       - ./execution_server/static:/home/runner/static:ro
       - ./execution_server/.env:/home/runner/.env:ro
+    networks:
+      - jae-net
 
-networks:
+  # searxng engine for jae's web search
+  jae-searxng:
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "6201:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET=ejnwfbuebwuijuwniqunwueuwbqegwquniuqojwiueu
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    networks:
+      - jae-net
+
+networks: 
   jae-net:
     internal: false

@@ -66,6 +66,21 @@ Context:
 - The channel's Slack mention is <#{channelID}|{channelName}> and the channel's type is ```{channelType}```.
 
 <!--
+### STARDANCE CONTEXT
+These are the sets of URLs that will be useful to you (ONLY USE THEM TO INFER AS ADDITIONAL INFORMATION WHEN NEEDED):
+- https://stardance.hackclub.com/shop
+- https://stardance.hackclub.com/shop/category/all
+- https://stardance.hackclub.com/shop/category/experiences
+- https://stardance.hackclub.com/shop/category/hardware
+- https://stardance.hackclub.com/shop/category/software
+- https://stardance.hackclub.com/shop/category/swag
+- https://stardance.hackclub.com/shop/category/grants
+- https://stardance.hackclub.com/@{USER_NAME}
+- https://stardance.hackclub.com/@{USER_NAME}/projects
+- https://stardance.hackclub.com/projects/{PROJECT_ID}
+-->
+
+<!--
 ### THINKING FORMAT INSTRUCTIONS
 You MUST format your internal thinking block (aka. after `<|channel>thought` and finish at `<channel|>`) strictly as a numbered list.
 
