@@ -601,8 +601,19 @@ app.message(async ({ say, message, setStatus, sayStream, event, client }) => {
                 console.error(`ERROR loading tool: tools/${file}`);
                 continue;
             }
-            TOOLS.add(mod.default.default.config, mod.default.default.callback);
-            console.log(`SUCCESS loaded tool: tools/${file} as ${mod.default.default.config.function.name}`)
+
+            let addToolCondition = true;
+
+            if (mod.default.default.addToolCondition) {
+                addToolCondition = await mod.default.default.addToolCondition();
+            }
+
+            if (addToolCondition === true) {
+                TOOLS.add(mod.default.default.config, mod.default.default.callback);
+                console.log(`SUCCESS loaded tool: tools/${file} as ${mod.default.default.config.function.name}`);
+            } else {
+                console.warn(`WARN tool was not loaded as the condition was not true and instead another value: tools/${file} as ${mod.default.default.config.function.name} - complaint: ${addToolCondition}`);
+            }
         }
     }
 
