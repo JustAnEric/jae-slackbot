@@ -86,10 +86,10 @@ TITLE_GENERATION_MODEL=__default   # '__default' or comment out this setting if 
 MAX_PREVIOUS_MESSAGES=15
 
 # tool parameters
-EXECUTION_SERVER=127.0.0.1:6200
+EXECUTION_SERVER=127.0.0.1:6200   # remove this parameter to disable the execution server
 EXECUTION_SERVER_TOKEN=
 
-SEARXNG_SERVER=127.0.0.1:6201
+SEARXNG_SERVER=127.0.0.1:6201   # remove this parameter to disable SEARXNG and web search
 ```
 Your app *needs* these OAuth bot token scopes (these can change frequently after updates).
 ```lua

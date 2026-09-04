@@ -32,4 +32,12 @@ async function callback(args: Record<string, any>): Promise<string> {
     return JSON.stringify(out);
 }
 
-export default { config, callback };
+async function addToolCondition(): Promise<true | any> {
+    if (process.env.EXECUTION_SERVER) {
+        return true;
+    } else {
+        return "Execution server is not enabled or defined";
+    }
+}
+
+export default { config, callback, addToolCondition };

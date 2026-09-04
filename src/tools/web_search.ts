@@ -65,4 +65,12 @@ async function callback(args: Record<string, any>): Promise<string> {
     return JSON.stringify(refResults);
 }
 
-export default { config, callback };
+async function addToolCondition(): Promise<true | any> {
+    if (process.env.SEARXNG_SERVER) {
+        return true;
+    } else {
+        return "SearXNG web search server was not enabled or defined";
+    }
+}
+
+export default { config, callback, addToolCondition };
