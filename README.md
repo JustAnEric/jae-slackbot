@@ -141,6 +141,10 @@ npm i # to install packages prelisted in package.json
 npm run build && npm start
 ```
 
+## Docker Usage
+
+This project uses Docker and Docker Compose. **For more information about how Docker is used, view [DOCKER_USE.md](DOCKER_USE.md)**
+
 ## Hack Club
 
 This project started out with a template from Hack Club's official guides: [Slack Bot Mission](https://stardance.hackclub.com/missions/slack-bot/guide#step-1) (thanks Hack Club for the neat suggestion)
