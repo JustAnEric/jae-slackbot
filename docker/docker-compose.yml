@@ -1,0 +1,60 @@
+services:
+  # the proxy that guards docker.sock for the host
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    environment:
+      - CONTAINERS=1   # allow starting/stopping/creating containers
+      - POST=1         # allow creating containers
+      - GET=1          # allow inspecting containers/images
+      - EXEC=0         # block dangerous exec calls on host containers
+      - VOLUMES=0      # block mounting host volumes
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: always
+    networks:
+      - jae-net
+
+  # jae slack bot / execution server
+  jae-server:
+    image: jae-exec-server
+    environment:
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    depends_on:
+      - docker-proxy
+    ports: # EDIT PORT FORWARDING HERE! hostPort:containerPort/tcp
+      - "6200:6200/tcp"
+    volumes:
+      - ./execution_server/web:/home/runner/web:ro
+      - ./execution_server/static:/home/runner/static:ro
+      - ./execution_server/.env:/home/runner/.env:ro
+    networks:
+      - jae-net
+
+  # searxng engine for jae's web search
+  jae-searxng:
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "6201:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_SECRET=ejnwfbuebwuijuwniqunwueuwbqegwquniuqojwiueu
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    networks:
+      - jae-net
+
+networks: 
+  jae-net:
+    internal: false

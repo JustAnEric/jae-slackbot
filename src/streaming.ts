@@ -53,6 +53,8 @@ const parseThinkingSections = (thinkingText: string, { final = false } = {}) => 
 };
 
 class Stream {
+    private globalStepCount = 0;
+
     sayStream: SayStreamFn;
     message: GenericMessageEvent;
     tools: Tools;
@@ -84,9 +86,17 @@ class Stream {
         if (!this.reasoningInitialized || this.activeStepsMap.size === 0) return;
 
         const sections = parseThinkingSections(this.thinkingBuffer, { final: true });
+        const existingStepIds = Array.from(this.activeStepsMap.keys());
+
         const finalEmits: Array<AnyChunk> = sections.map((section, index) => {
-            const stepId = `step_${index + 1}`;
-            const existing = this.activeStepsMap.get(stepId);
+            let stepId = existingStepIds[index];
+
+            if (!stepId) {
+                this.globalStepCount++;
+                stepId = `step_${this.globalStepCount}`;
+            }
+
+            const existing = stepId ? this.activeStepsMap.get(stepId) : undefined;
             return {
                 type: "task_update",
                 id: stepId,
@@ -95,6 +105,8 @@ class Stream {
                 details: (!existing?.sentDetails && section.body) ? section.body as string : undefined
             };
         });
+
+        console.log(finalEmits);
 
         await this.stream.append({ chunks: finalEmits });
         this.activeStepsMap.clear();
@@ -105,7 +117,8 @@ class Stream {
 
     reset() {
         this.thinkingBuffer = '';
-        this.activeStepsMap.clear();
+        // don't clear activeStepsMap otherwise the bot will forget its previous steps
+        //this.activeStepsMap.clear();
         this.reasoningInitialized = false;
         this.toolCallInitialized = false;
         this.lastNewlinePos = 0;
@@ -146,8 +159,16 @@ class Stream {
                 for (let i = 0; i < sections.length; i++) {
                     const section = sections[i];
                     if (!section) continue;
-                    const stepId = `step_${i + 1}`;
-                    const isCompletedStep = i < sections.length - 1;
+
+                    const existingStepIds = Array.from(this.activeStepsMap.keys());
+                    let stepId = existingStepIds[i];
+
+                    if (!stepId) {
+                        this.globalStepCount++;
+                        stepId = `step_${this.globalStepCount}`;
+                    }
+
+                    const isCompletedStep = i < (sections.length - 1);
                     const existing = this.activeStepsMap.get(stepId);
 
                     if (!existing) {

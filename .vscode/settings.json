@@ -1,0 +1,6 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "${workspaceFolder}/docker/execution_server/Cargo.toml", 
+        "${workspaceFolder}/docker/execution_server/inside_agent/Cargo.toml"
+    ]
+}
